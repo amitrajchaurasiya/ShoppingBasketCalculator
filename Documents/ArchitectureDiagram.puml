@@ -1,0 +1,75 @@
+@startuml ShoppingBasketArchitectureDiagram
+
+title Shopping Basket Calculator — Architecture Diagram
+left to right direction
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+actor User
+
+package "Console Host" {
+	component "Program\n(top-level statements)" as ConsoleApp
+}
+
+package "Dependency Injection / Composition" {
+	component "ServiceCollectionExtensions\nAddShoppingBasket()" as Composition
+}
+
+package "Abstractions" {
+	interface "IShoppingBasketPricingService" as PricingContract
+	interface "IProductCatalog" as CatalogContract
+	interface "IPricingOfferStrategy" as StrategyContract
+}
+
+package "Services" {
+	component "ShoppingBasketPricingService" as PricingService
+	component "InMemoryProductCatalog" as ProductCatalog
+}
+
+package "Offer Strategies" {
+	component "QuantityOfferStrategy" as QuantityStrategy
+	component "PercentageDiscountStrategy" as PercentageStrategy
+}
+
+package "Domain Models" {
+	artifact "Product" as Product
+	artifact "OfferRule" as OfferRule
+	artifact "QuantityBundleConfiguration" as QuantityConfig
+	artifact "PercentageDiscountConfiguration" as PercentageConfig
+	artifact "OfferTypeIds" as OfferTypeIds
+}
+
+User --> ConsoleApp : enters product quantities
+ConsoleApp --> User : displays basket total / validation error
+ConsoleApp ..> Composition : registers and resolves services
+ConsoleApp --> PricingContract : CalculateTotalPence(quantities)
+
+PricingService ..|> PricingContract
+ProductCatalog ..|> CatalogContract
+QuantityStrategy ..|> StrategyContract
+PercentageStrategy ..|> StrategyContract
+
+Composition ..> PricingContract : binds to
+Composition ..> PricingService
+Composition ..> CatalogContract : binds to
+Composition ..> ProductCatalog
+Composition ..> StrategyContract : registers implementations
+Composition ..> QuantityStrategy
+Composition ..> PercentageStrategy
+
+PricingService --> CatalogContract : looks up products
+PricingService --> StrategyContract : selects by offer type
+ProductCatalog --> Product : stores product definitions
+Product *-- OfferRule : contains offers
+QuantityStrategy ..> OfferRule : reads rule
+QuantityStrategy ..> QuantityConfig : deserializes configuration
+PercentageStrategy ..> OfferRule : reads rule
+PercentageStrategy ..> PercentageConfig : deserializes configuration
+OfferRule ..> OfferTypeIds : uses offer identifiers
+
+note bottom of PricingService
+  Calculates line totals, applies offers by priority,
+  then returns the rounded basket total in pence.
+end note
+
+@enduml

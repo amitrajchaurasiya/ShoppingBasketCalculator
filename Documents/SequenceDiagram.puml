@@ -1,0 +1,73 @@
+@startuml ShoppingBasketSequenceDiagram
+
+title Shopping Basket Pricing — Sequence Diagram
+autonumber
+
+actor User
+participant "Console Program" as App
+participant "Dependency Injection Container" as DI
+participant "ShoppingBasketPricingService" as Pricing
+participant "InMemoryProductCatalog" as Catalog
+participant "QuantityOfferStrategy" as Quantity
+participant "PercentageDiscountStrategy" as Percentage
+
+== Startup ==
+App -> DI: Register services with AddShoppingBasket()
+App -> DI: Build provider and resolve IShoppingBasketPricingService
+DI -> Pricing: Construct with catalog and offer strategies
+DI --> App: Return pricing service
+
+== Read and validate basket ==
+App -> User: Prompt for product: quantity entries
+User -> App: Enter basket text
+App -> App: Split input into comma-separated entries
+
+alt All entries are valid
+	loop Each entry
+		App -> App: Split at ':' and parse quantity
+		App -> App: Validate product name and quantity > 0
+		App -> App: Aggregate into case-insensitive dictionary
+		note right of App
+			Duplicate product names with different casing
+			are combined. Accumulated quantity is overflow-checked.
+		end note
+	end
+
+	== Calculate total ==
+	App -> Pricing: CalculateTotalPence(quantities)
+	Pricing -> Pricing: Validate, trim, and normalize product names
+
+	loop Each normalized product
+		Pricing -> Catalog: GetByName(productName)
+		alt Product exists
+			Catalog --> Pricing: Product (unit price and offers)
+			Pricing -> Pricing: Calculate base line total
+
+			loop Each offer in priority order
+				alt Quantity bundle offer
+					Pricing -> Quantity: Apply(offer, quantity, unit price, line total)
+					Quantity --> Pricing: Adjusted line total
+				else Percentage discount offer
+					Pricing -> Percentage: Apply(offer, quantity, unit price, line total)
+					Percentage --> Pricing: Adjusted line total
+				end
+				Pricing -> Pricing: Update line total
+			end
+
+			Pricing -> Pricing: Add line total to basket total
+		else Product is unknown
+			Catalog --> Pricing: Throw ArgumentException
+			Pricing --> App: Propagate exception
+			App -> User: Display error and set exit code 1
+		end
+	end
+
+	Pricing -> Pricing: Round total and convert to integer pence
+	Pricing --> App: Return total pence
+	App -> User: Display total in pence and pounds
+else Invalid format, blank name, nonpositive quantity, or overflow
+	App -> App: Throw ArgumentException
+	App -> User: Display validation error and set exit code 1
+end
+
+@enduml

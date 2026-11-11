@@ -1,0 +1,119 @@
+@startuml ShoppingBasketClassDiagram
+
+title Shopping Basket Calculator — Class Diagram
+skinparam classAttributeIconSize 0
+
+package "ShoppingBasket.Abstractions" {
+	interface IShoppingBasketPricingService {
+		+CalculateTotalPence(quantities: IReadOnlyDictionary<string, int>): int
+		+CalculateTotalPounds(quantities: IReadOnlyDictionary<string, int>): decimal
+	}
+
+	interface IProductCatalog {
+		+GetByName(productName: string): Product
+	}
+
+	interface IPricingOfferStrategy {
+		+OfferType: string
+		+Priority: int
+		+Apply(offer: OfferRule, quantity: int, unitPricePence: int, currentLineTotalPence: decimal): decimal
+	}
+}
+
+package "ShoppingBasket.Services" {
+	class ShoppingBasketPricingService {
+		-_productCatalog: IProductCatalog
+		-_offerStrategiesByType: IReadOnlyDictionary<string, IPricingOfferStrategy>
+		+CalculateTotalPence(quantities: IReadOnlyDictionary<string, int>): int
+		+CalculateTotalPounds(quantities: IReadOnlyDictionary<string, int>): decimal
+		-GetStrategy(offerType: string): IPricingOfferStrategy
+	}
+
+	class InMemoryProductCatalog {
+		-_products: Product[]
+		+GetByName(productName: string): Product
+	}
+}
+
+package "ShoppingBasket.Offers" {
+	class QuantityOfferStrategy {
+		+OfferType: string
+		+Priority: int
+		+Apply(offer: OfferRule, quantity: int, unitPricePence: int, currentLineTotalPence: decimal): decimal
+	}
+
+	class PercentageDiscountStrategy {
+		+OfferType: string
+		+Priority: int
+		+Apply(offer: OfferRule, quantity: int, unitPricePence: int, currentLineTotalPence: decimal): decimal
+	}
+}
+
+package "ShoppingBasket.Models" {
+	class Product {
+		+ProductId: int
+		+Name: string
+		+UnitPricePence: int
+		+Offers: ICollection<OfferRule>
+	}
+
+	class OfferRule {
+		+ProductOfferId: int
+		+ProductId: int
+		+Product: Product?
+		+OfferType: string
+		+ConfigurationJson: string
+		+ConfigurationVersion: int
+		+DeserializeConfiguration<TConfiguration>(supportedVersion: int): TConfiguration
+	}
+
+	class QuantityBundleConfiguration {
+		+BuyQuantity: int
+		+PayForQuantity: int
+		+Validate(): void
+	}
+
+	class PercentageDiscountConfiguration {
+		+DiscountPercentage: decimal
+		+Validate(): void
+	}
+
+	class OfferTypeIds <<static>> {
+		{static} +QuantityBundle: string
+		{static} +PercentageDiscount: string
+	}
+}
+
+package "ShoppingBasket.DependencyInjection" {
+	class ServiceCollectionExtensions <<static>> {
+		{static} +AddShoppingBasket(services: IServiceCollection): IServiceCollection
+	}
+}
+
+class "Program (top-level)" as Program <<entry point>>
+
+ShoppingBasketPricingService ..|> IShoppingBasketPricingService
+InMemoryProductCatalog ..|> IProductCatalog
+QuantityOfferStrategy ..|> IPricingOfferStrategy
+PercentageDiscountStrategy ..|> IPricingOfferStrategy
+
+ShoppingBasketPricingService --> "1" IProductCatalog : uses
+ShoppingBasketPricingService --> "0..*" IPricingOfferStrategy : offer strategies
+InMemoryProductCatalog --> "0..*" Product : stores
+Product "1" o-- "0..*" OfferRule : Offers
+
+QuantityOfferStrategy ..> OfferRule : reads offer configuration
+QuantityOfferStrategy ..> QuantityBundleConfiguration : deserializes
+PercentageDiscountStrategy ..> OfferRule : reads offer configuration
+PercentageDiscountStrategy ..> PercentageDiscountConfiguration : deserializes
+
+Program ..> IShoppingBasketPricingService : calls
+ServiceCollectionExtensions ..> IProductCatalog : registers
+ServiceCollectionExtensions ..> InMemoryProductCatalog : implementation
+ServiceCollectionExtensions ..> IPricingOfferStrategy : registers
+ServiceCollectionExtensions ..> QuantityOfferStrategy : implementation
+ServiceCollectionExtensions ..> PercentageDiscountStrategy : implementation
+ServiceCollectionExtensions ..> IShoppingBasketPricingService : registers
+ServiceCollectionExtensions ..> ShoppingBasketPricingService : implementation
+
+@enduml
