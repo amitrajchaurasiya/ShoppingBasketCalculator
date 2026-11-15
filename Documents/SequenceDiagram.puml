@@ -1,0 +1,60 @@
+@startuml ShoppingBasketSequenceDiagram
+
+title Shopping Basket Pricing — Sequence Diagram
+autonumber
+
+actor User
+participant "Console Program" as App
+participant "Dependency Injection Container" as DI
+participant "ShoppingBasketPricingService" as Pricing
+participant "InMemoryProductCatalog" as Catalog
+participant "QuantityOfferStrategy" as Quantity
+participant "PercentageDiscountStrategy" as Percentage
+
+== Startup ==
+App -> DI: Register services with AddShoppingBasket()
+App -> DI: Build provider and resolve IShoppingBasketPricingService
+DI -> Pricing: Construct with catalog and offer strategies
+DI --> App: Return pricing service
+
+== Read and validate basket ==
+App -> User: Prompt for comma-separated item names
+User -> App: Enter basket text
+App -> App: Split input into comma-separated names and trim entries
+
+App -> Pricing: CalculateTotalPence(items)
+alt All item names are valid
+	loop Each item
+		Pricing -> Pricing: Validate and trim product name
+		Pricing -> Catalog: GetByName(productName)
+		Catalog --> Pricing: Product
+		Pricing -> Pricing: Increment normalized quantity (case-insensitive)
+	end
+
+	loop Each normalized product
+		Pricing -> Catalog: GetByName(productName)
+		Catalog --> Pricing: Product (unit price and offers)
+		Pricing -> Pricing: Calculate base line total
+		loop Each offer in priority order
+			alt Quantity bundle offer
+				Pricing -> Quantity: Apply(offer, quantity, unit price, line total)
+				Quantity --> Pricing: Adjusted line total
+			else Percentage discount offer
+				Pricing -> Percentage: Apply(offer, quantity, unit price, line total)
+				Percentage --> Pricing: Adjusted line total
+			end
+			Pricing -> Pricing: Update line total
+		end
+
+		Pricing -> Pricing: Add line total to basket total
+	end
+
+	Pricing -> Pricing: Round total and convert to integer pence
+	Pricing --> App: Return total pence
+	App -> User: Display total in pence and pounds
+else Blank or unknown product name
+	Pricing --> App: Throw ArgumentException
+	App -> User: Display validation error and set exit code 1
+end
+
+@enduml
